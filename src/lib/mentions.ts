@@ -1,5 +1,5 @@
-import { userMappings } from "./db";
 import { getCachetUser } from "./cachet";
+import { userMappings } from "./db";
 
 /**
  * Converts IRC @mentions and nick: mentions to Slack user mentions

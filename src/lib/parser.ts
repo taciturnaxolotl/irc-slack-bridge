@@ -29,7 +29,7 @@ export function parseSlackMarkdown(text: string): string {
 	parsed = parsed.replace(/<!date\^[0-9]+\^[^|]+\|([^>]+)>/g, "$1");
 
 	// Replace Slack bold *text* with IRC bold \x02text\x02
-	parsed = parsed.replace(/\*((?:[^\*]|\\\*)+)\*/g, "\x02$1\x02");
+	parsed = parsed.replace(/\*((?:[^*]|\\\*)+)\*/g, "\x02$1\x02");
 
 	// Replace Slack italic _text_ with IRC italic \x1Dtext\x1D
 	parsed = parsed.replace(/_((?:[^_]|\\_)+)_/g, "\x1D$1\x1D");

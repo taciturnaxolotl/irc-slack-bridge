@@ -127,7 +127,12 @@ export const threadTimestamps = {
 			.get(threadId) as ThreadInfo | null;
 	},
 
-	update(threadTs: string, threadId: string, slackChannelId: string, timestamp: number): void {
+	update(
+		threadTs: string,
+		threadId: string,
+		slackChannelId: string,
+		timestamp: number,
+	): void {
 		db.run(
 			"INSERT OR REPLACE INTO thread_timestamps (thread_ts, thread_id, slack_channel_id, last_message_time) VALUES (?, ?, ?, ?)",
 			[threadTs, threadId, slackChannelId, timestamp],

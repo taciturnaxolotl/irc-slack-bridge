@@ -2,9 +2,9 @@ import * as irc from "irc";
 import { SlackApp } from "slack-edge";
 import { version } from "../package.json";
 import { registerCommands } from "./commands";
-import { channelMappings, userMappings } from "./lib/db";
 import { getAvatarForNick } from "./lib/avatars";
 import { uploadToCDN } from "./lib/cdn";
+import { channelMappings, userMappings } from "./lib/db";
 import {
 	convertIrcMentionsToSlack,
 	convertSlackMentionsToIrc,
@@ -16,6 +16,7 @@ import {
 	isFirstThreadMessage,
 	updateThreadTimestamp,
 } from "./lib/threads";
+import { cleanupUserCache, getUserInfo } from "./lib/user-cache";
 
 const missingEnvVars = [];
 if (!process.env.SLACK_BOT_TOKEN) missingEnvVars.push("SLACK_BOT_TOKEN");
@@ -77,13 +78,17 @@ process.on("beforeExit", () => {
 registerCommands();
 
 // Periodic cleanup of old thread timestamps (every hour)
-setInterval(() => {
-	cleanupOldThreads();
-}, 60 * 60 * 1000);
+setInterval(
+	() => {
+		cleanupOldThreads();
+		cleanupUserCache();
+	},
+	60 * 60 * 1000,
+);
 
 // Track NickServ authentication state
 let nickServAuthAttempted = false;
-let isAuthenticated = false;
+let _isAuthenticated = false;
 
 // Join all mapped IRC channels on connect
 ircClient.addListener("registered", async () => {
@@ -113,7 +118,7 @@ ircClient.addListener("join", (channel: string, nick: string) => {
 // Handle NickServ notices
 ircClient.addListener(
 	"notice",
-	async (nick: string, to: string, text: string) => {
+	async (nick: string, _to: string, text: string) => {
 		if (nick !== "NickServ") return;
 
 		console.log(`NickServ: ${text}`);
@@ -124,7 +129,7 @@ ircClient.addListener(
 			text.includes("Password accepted")
 		) {
 			console.log("✓ Successfully authenticated with NickServ");
-			isAuthenticated = true;
+			_isAuthenticated = true;
 
 			// Join channels after successful auth
 			const mappings = channelMappings.getAll();
@@ -193,7 +198,10 @@ ircClient.addListener(
 		if (threadMatch) {
 			const threadId = threadMatch[1];
 			const threadInfo = getThreadByThreadId(threadId);
-			if (threadInfo && threadInfo.slack_channel_id === mapping.slack_channel_id) {
+			if (
+				threadInfo &&
+				threadInfo.slack_channel_id === mapping.slack_channel_id
+			) {
 				threadTs = threadInfo.thread_ts;
 				// Remove the @xxxxx from the message
 				messageText = messageText.replace(threadMentionPattern, "").trim();
@@ -325,17 +333,14 @@ slackApp.event("message", async ({ payload }) => {
 	}
 
 	try {
-		const userInfo = await slackClient.users.info({
-			token: process.env.SLACK_BOT_TOKEN,
-			user: payload.user,
-		});
+		const userInfo = await getUserInfo(payload.user, slackClient);
 
 		// Check for user mapping, otherwise use Slack name
 		const userMapping = userMappings.getBySlackUser(payload.user);
 		const username =
 			userMapping?.irc_nick ||
-			userInfo.user?.real_name ||
-			userInfo.user?.name ||
+			userInfo?.realName ||
+			userInfo?.name ||
 			"Unknown";
 
 		// Parse Slack mentions and replace with IRC nicks or display names

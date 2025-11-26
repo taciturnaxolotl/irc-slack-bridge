@@ -1,6 +1,6 @@
 import type { AnyMessageBlock } from "slack-edge";
-import { channelMappings, userMappings } from "./lib/db";
 import { ircClient, slackApp } from "./index";
+import { channelMappings, userMappings } from "./lib/db";
 import { canManageChannel } from "./lib/permissions";
 
 export function registerCommands() {
@@ -137,7 +137,7 @@ export function registerCommands() {
 
 		context.respond({
 			response_type: "ephemeral",
-			text: "Are you sure you want to remove the bridge to *${mapping.irc_channel}*?",
+			text: `Are you sure you want to remove the bridge to *${mapping.irc_channel}*?`,
 			blocks: [
 				{
 					type: "section",
@@ -313,7 +313,7 @@ export function registerCommands() {
 
 		context.respond({
 			response_type: "ephemeral",
-			text: "Are you sure you want to remove your link to IRC nick *${mapping.irc_nick}*?",
+			text: `Are you sure you want to remove your link to IRC nick *${mapping.irc_nick}*?`,
 			blocks: [
 				{
 					type: "section",
@@ -400,7 +400,7 @@ export function registerCommands() {
 	});
 
 	// List channel mappings
-	slackApp.command("/irc-bridge-list", async ({ payload, context }) => {
+	slackApp.command("/irc-bridge-list", async ({ context }) => {
 		const channelMaps = channelMappings.getAll();
 		const userMaps = userMappings.getAll();
 
