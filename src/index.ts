@@ -320,10 +320,12 @@ slackApp.event("message", async ({ payload, context }) => {
 		// Parse Slack markdown formatting
 		messageText = parseSlackMarkdown(messageText);
 
-		const message = `<${username}> ${messageText}`;
-
-		ircClient.say(mapping.irc_channel, message);
-		console.log(`Slack → IRC: ${message}`);
+		// Send message only if there's text content
+		if (messageText.trim()) {
+			const message = `<${username}> ${messageText}`;
+			ircClient.say(mapping.irc_channel, message);
+			console.log(`Slack → IRC: ${message}`);
+		}
 
 		// Handle file uploads
 		if (payload.files && payload.files.length > 0) {
