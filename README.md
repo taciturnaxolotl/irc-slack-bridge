@@ -13,6 +13,11 @@ bun install
 bun dev
 ```
 
+To run tests:
+```bash
+bun test
+```
+
 ### Slack App Setup
 
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
@@ -37,6 +42,9 @@ SLACK_API_URL=https://hackclub.enterprise.slack.com
 # Optional: For channel manager permission checks
 SLACK_USER_COOKIE=your-slack-cookie-here
 SLACK_USER_TOKEN=your-user-token-here
+
+# Optional: Enable Cachet API for user lookups (recommended for better performance)
+CACHET_ENABLED=true
 
 # IRC Configuration
 IRC_NICK=slackbridge
@@ -75,7 +83,7 @@ Channel and user mappings are stored in a SQLite database (`bridge.db`). You can
 **Using Bun REPL:**
 ```bash
 bun repl
-> import { channelMappings, userMappings } from "./src/db"
+> import { channelMappings, userMappings } from "./src/lib/db"
 > channelMappings.create("C1234567890", "#general")
 > userMappings.create("U1234567890", "myircnick")
 > channelMappings.getAll()
@@ -103,12 +111,15 @@ The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bi
   - IRC `/me` actions are displayed in a context block with the user's avatar
   - Thread replies: Use `@xxxxx` (5-char thread ID) to reply to a Slack thread from IRC
 - **Slack → IRC**: Messages from mapped Slack channels are sent to their corresponding IRC channels
-  - Slack mentions are converted to mapped IRC nicks, or the display name from `<@U123|name>` format
+  - User display names: Uses name from Slack event if available, otherwise Cachet API (if `CACHET_ENABLED=true`), then Slack API fallback
+  - All lookups are cached locally (1 hour TTL) to reduce API calls
+  - Slack mentions are converted to mapped IRC nicks, or looked up via the above priority
   - Slack markdown is converted to IRC formatting codes
   - File attachments are uploaded to Hack Club CDN and URLs are shared
   - Thread messages are prefixed with `@xxxxx` (5-char thread ID) to show they're part of a thread
   - First reply in a thread includes a quote of the parent message
 - **User mappings** allow custom IRC nicknames for specific Slack users and enable proper mentions both ways
+- **Permissions**: Only channel creators, channel managers, or global admins can bridge/unbridge channels
 
 #### Thread Support
 
@@ -120,9 +131,41 @@ The bridge supports Slack threads with a simple IRC-friendly syntax:
 - **IRC → Slack**: Reply to a thread by including the thread ID in your message
   - Example: `@abc12 this is my reply`
   - The bridge removes the `@xxxxx` prefix and sends your message to the correct thread
-  - Thread IDs are unique per thread and persist across restarts
+  - Thread IDs are unique per thread and persist across restarts (stored in SQLite)
 
 The bridge ignores its own messages and bot messages to prevent loops.
+
+### Architecture
+
+The bridge consists of several modules:
+
+- **`src/index.ts`** - Main application entry point with IRC/Slack event handlers
+- **`src/commands.ts`** - Slash command handlers for managing bridges
+- **`src/lib/db.ts`** - SQLite database layer for channel/user/thread mappings
+- **`src/lib/parser.ts`** - Bidirectional message formatting conversion (IRC ↔ Slack)
+- **`src/lib/mentions.ts`** - User mention conversion with Cachet integration
+- **`src/lib/threads.ts`** - Thread tracking and ID generation
+- **`src/lib/user-cache.ts`** - Cached Slack user info lookups (1-hour TTL)
+- **`src/lib/permissions.ts`** - Channel management permission checks
+- **`src/lib/avatars.ts`** - Stable avatar URL generation for IRC users
+- **`src/lib/cdn.ts`** - File upload integration with Hack Club CDN
+- **`src/lib/cachet.ts`** - User profile lookups from Cachet API
+
+### Testing
+
+The project includes comprehensive unit tests covering all core functionality:
+
+```bash
+bun test
+```
+
+Tests cover:
+- Message format parsing (IRC ↔ Slack)
+- User mention conversion
+- Thread ID generation and tracking
+- User info caching
+- Database operations
+- Avatar generation
 
 If you want to report an issue the main repo is [the tangled repo](https://tangled.org/dunkirk.sh/irc-slack-bridge) and the github is just a mirror.
 

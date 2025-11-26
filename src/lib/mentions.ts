@@ -40,7 +40,8 @@ export function convertIrcMentionsToSlack(messageText: string): string {
 }
 
 /**
- * Converts Slack user mentions to IRC @mentions, with Cachet fallback
+ * Converts Slack user mentions to IRC @mentions
+ * Priority: user mappings > display name from mention > Cachet lookup
  */
 export async function convertSlackMentionsToIrc(
 	messageText: string,
@@ -57,14 +58,19 @@ export async function convertSlackMentionsToIrc(
 		const mentionedUserMapping = userMappings.getBySlackUser(userId);
 		if (mentionedUserMapping) {
 			result = result.replace(match[0], `@${mentionedUserMapping.irc_nick}`);
-		} else if (displayName) {
-			// Use the display name from the mention format <@U123|name>
-			result = result.replace(match[0], `@${displayName}`);
 		} else {
-			// Fallback to Cachet lookup
-			const data = await getCachetUser(userId);
-			if (data) {
-				result = result.replace(match[0], `@${data.displayName}`);
+			// Try Cachet lookup if enabled
+			if (process.env.CACHET_ENABLED === "true") {
+				const data = await getCachetUser(userId);
+				if (data) {
+					result = result.replace(match[0], `@${data.displayName}`);
+					continue;
+				}
+			}
+
+			// Fallback to display name from the mention format <@U123|name>
+			if (displayName) {
+				result = result.replace(match[0], `@${displayName}`);
 			}
 		}
 	}

@@ -20,6 +20,28 @@ describe("user-cache", () => {
 	});
 
 	describe("getUserInfo", () => {
+		test("uses display name from event if provided", async () => {
+			const client = {
+				users: {
+					info: mock(async () => ({
+						user: {
+							name: "testuser",
+							real_name: "Test User",
+						},
+					})),
+				},
+			};
+
+			const result = await getUserInfo("U123", client, "Event Display Name");
+
+			expect(result).toEqual({
+				name: "Event Display Name",
+				realName: "Event Display Name",
+			});
+			// Should not call API when display name provided
+			expect(client.users.info).toHaveBeenCalledTimes(0);
+		});
+
 		test("fetches user info from Slack on cache miss", async () => {
 			const client = {
 				users: {
@@ -32,7 +54,7 @@ describe("user-cache", () => {
 				},
 			};
 
-			const result = await getUserInfo("U123", client);
+			const result = await getUserInfo("U125", client);
 
 			expect(result).toEqual({
 				name: "testuser",

@@ -333,7 +333,17 @@ slackApp.event("message", async ({ payload }) => {
 	}
 
 	try {
-		const userInfo = await getUserInfo(payload.user, slackClient);
+		// Get display name from payload if available, otherwise fetch from API
+		const displayNameFromEvent =
+			(payload as any).user_profile?.display_name ||
+			(payload as any).user_profile?.real_name ||
+			(payload as any).username;
+
+		const userInfo = await getUserInfo(
+			payload.user,
+			slackClient,
+			displayNameFromEvent,
+		);
 
 		// Check for user mapping, otherwise use Slack name
 		const userMapping = userMappings.getBySlackUser(payload.user);
