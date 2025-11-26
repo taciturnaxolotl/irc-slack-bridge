@@ -100,6 +100,7 @@ The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bi
   - Image URLs are automatically displayed as inline attachments
   - IRC mentions (`@nick` or `nick:`) are converted to Slack mentions for mapped users
   - IRC formatting codes are converted to Slack markdown
+  - IRC `/me` actions are displayed in a context block with the user's avatar
 - **Slack → IRC**: Messages from mapped Slack channels are sent to their corresponding IRC channels
   - Slack mentions are converted to mapped IRC nicks, or the display name from `<@U123|name>` format
   - Slack markdown is converted to IRC formatting codes

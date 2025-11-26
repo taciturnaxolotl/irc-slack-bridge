@@ -247,6 +247,87 @@ ircClient.addListener("error", (error: string) => {
 	console.error("IRC error:", error);
 });
 
+// Handle IRC /me actions
+ircClient.addListener("action", async (nick: string, to: string, text: string) => {
+	// Ignore messages from our own bot
+	const botNickPattern = new RegExp(`^${process.env.IRC_NICK}\\d*$`);
+	if (botNickPattern.test(nick)) return;
+	if (nick === "****") return;
+
+	// Find Slack channel mapping for this IRC channel
+	const mapping = channelMappings.getByIrcChannel(to);
+	if (!mapping) return;
+
+	// Check if this IRC nick is mapped to a Slack user
+	const userMapping = userMappings.getByIrcNick(nick);
+
+	let iconUrl: string;
+	if (userMapping) {
+		iconUrl = `https://cachet.dunkirk.sh/users/${userMapping.slack_user_id}/r`;
+	} else {
+		iconUrl = getAvatarForNick(nick);
+	}
+
+	// Parse IRC formatting and mentions
+	let messageText = parseIRCFormatting(text);
+
+	// Find all @mentions and nick: mentions in the IRC message
+	const atMentionPattern = /@(\w+)/g;
+	const nickMentionPattern = /(\w+):/g;
+
+	const atMentions = Array.from(messageText.matchAll(atMentionPattern));
+	const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
+
+	for (const match of atMentions) {
+		const mentionedNick = match[1] as string;
+		const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+		if (mentionedUserMapping) {
+			messageText = messageText.replace(
+				match[0],
+				`<@${mentionedUserMapping.slack_user_id}>`,
+			);
+		}
+	}
+
+	for (const match of nickMentions) {
+		const mentionedNick = match[1] as string;
+		const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+		if (mentionedUserMapping) {
+			messageText = messageText.replace(
+				match[0],
+				`<@${mentionedUserMapping.slack_user_id}>:`,
+			);
+		}
+	}
+
+	// Format as action message with context block
+	const actionText = `${nick} ${messageText}`;
+
+	await slackClient.chat.postMessage({
+		token: process.env.SLACK_BOT_TOKEN,
+		channel: mapping.slack_channel_id,
+		text: actionText,
+		blocks: [
+			{
+				type: "context",
+				elements: [
+					{
+						type: "image",
+						image_url: iconUrl,
+						alt_text: nick,
+					},
+					{
+						type: "mrkdwn",
+						text: actionText,
+					},
+				],
+			},
+		],
+	});
+
+	console.log(`IRC → Slack (action): ${actionText}`);
+});
+
 // Slack event handlers
 slackApp.event("message", async ({ payload, context }) => {
 	// Ignore bot messages and threaded messages
