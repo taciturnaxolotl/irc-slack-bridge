@@ -19,7 +19,7 @@ features:
     - command: /irc-bridge-user
       url: https://casual-renewing-reptile.ngrok-free.app/slack
       description: Link your Slack account to an IRC nickname
-      usage_hint: "irc-nick"
+      usage_hint: irc-nick
       should_escape: true
     - command: /irc-unbridge-user
       url: https://casual-renewing-reptile.ngrok-free.app/slack
@@ -50,6 +50,9 @@ settings:
     request_url: https://casual-renewing-reptile.ngrok-free.app/slack
     bot_events:
       - message.channels
+  interactivity:
+    is_enabled: true
+    request_url: https://casual-renewing-reptile.ngrok-free.app/slack
   org_deploy_enabled: false
   socket_mode_enabled: false
   token_rotation_enabled: false

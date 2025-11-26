@@ -1,146 +1,462 @@
+import type { AnyMessageBlock, Block, BlockElement } from "slack-edge";
 import { channelMappings, userMappings } from "./db";
 import { slackApp, ircClient } from "./index";
 
 export function registerCommands() {
 	// Link Slack channel to IRC channel
 	slackApp.command("/irc-bridge-channel", async ({ payload, context }) => {
-		const args = payload.text.trim().split(/\s+/);
-		const ircChannel = args[0];
+		context.respond({
+			response_type: "ephemeral",
+			text: "Bridge channel command received",
+			blocks: [
+				{
+					type: "input",
+					block_id: "irc_channel_input",
+					element: {
+						type: "plain_text_input",
+						action_id: "irc_channel",
+						placeholder: {
+							type: "plain_text",
+							text: "#lounge",
+						},
+					},
+					label: {
+						type: "plain_text",
+						text: "IRC Channel",
+					},
+				},
+				{
+					type: "actions",
+					elements: [
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Bridge Channel",
+							},
+							style: "primary",
+							action_id: "bridge_channel_submit",
+							value: payload.channel_id,
+						},
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Cancel",
+							},
+							action_id: "cancel",
+						},
+					],
+				},
+			],
+			replace_original: true,
+		});
+	});
 
-		if (!ircChannel || !ircChannel.startsWith("#")) {
-			return {
-				text: "Usage: `/irc-bridge-channel #irc-channel`\nExample: `/irc-bridge-channel #lounge`",
-			};
+	// Handle bridge channel submission
+	slackApp.action("bridge_channel_submit", async ({ payload, context }) => {
+		const stateValues = payload.state?.values;
+		const ircChannel = stateValues?.irc_channel_input?.irc_channel?.value;
+		// @ts-expect-error
+		const slackChannelId = payload.actions?.[0]?.value;
+		if (!context.respond) {
+			return;
 		}
 
-		const slackChannelId = payload.channel_id;
+		if (!ircChannel || !ircChannel.startsWith("#")) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ IRC channel must start with #",
+				replace_original: true,
+			});
+			return;
+		}
 
 		try {
-			// Create the mapping
 			channelMappings.create(slackChannelId, ircChannel);
-
-			// Join the IRC channel
 			ircClient.join(ircChannel);
 
-			// Join the Slack channel if not already in it
 			await context.client.conversations.join({
 				channel: slackChannelId,
 			});
 
-			return {
-				text: `✅ Successfully bridged this channel to ${ircChannel}`,
-			};
+			console.log(
+				`Created channel mapping: ${slackChannelId} -> ${ircChannel}`,
+			);
+
+			context.respond({
+				response_type: "ephemeral",
+				text: `✅ Successfully bridged <#${slackChannelId}> to ${ircChannel}`,
+				replace_original: true,
+			});
 		} catch (error) {
 			console.error("Error creating channel mapping:", error);
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `❌ Failed to bridge channel: ${error}`,
-			};
+				replace_original: true,
+			});
 		}
 	});
 
 	// Unlink Slack channel from IRC
-	slackApp.command("/irc-unbridge-channel", async ({ payload }) => {
+	slackApp.command("/irc-unbridge-channel", async ({ payload, context }) => {
 		const slackChannelId = payload.channel_id;
+		const mapping = channelMappings.getBySlackChannel(slackChannelId);
+
+		if (!mapping) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ This channel is not bridged to IRC",
+			});
+			return;
+		}
+
+		context.respond({
+			response_type: "ephemeral",
+			text: "Are you sure you want to remove the bridge to *${mapping.irc_channel}*?",
+			blocks: [
+				{
+					type: "section",
+					text: {
+						type: "mrkdwn",
+						text: `Are you sure you want to remove the bridge to *${mapping.irc_channel}*?`,
+					},
+				},
+				{
+					type: "actions",
+					elements: [
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Remove Bridge",
+							},
+							style: "danger",
+							action_id: "unbridge_channel_confirm",
+							value: slackChannelId,
+						},
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Cancel",
+							},
+							action_id: "cancel",
+						},
+					],
+				},
+			],
+			replace_original: true,
+		});
+	});
+
+	// Handle unbridge confirmation
+	slackApp.action("unbridge_channel_confirm", async ({ payload, context }) => {
+		// @ts-expect-error
+		const slackChannelId = payload.actions?.[0]?.value;
+		if (!context.respond) return;
 
 		try {
 			const mapping = channelMappings.getBySlackChannel(slackChannelId);
 			if (!mapping) {
-				return {
+				context.respond({
+					response_type: "ephemeral",
 					text: "❌ This channel is not bridged to IRC",
-				};
+					replace_original: true,
+				});
+				return;
 			}
 
 			channelMappings.delete(slackChannelId);
+			console.log(
+				`Removed channel mapping: ${slackChannelId} -> ${mapping.irc_channel}`,
+			);
 
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `✅ Removed bridge to ${mapping.irc_channel}`,
-			};
+				replace_original: true,
+			});
 		} catch (error) {
 			console.error("Error removing channel mapping:", error);
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `❌ Failed to remove bridge: ${error}`,
-			};
+				replace_original: true,
+			});
 		}
 	});
 
 	// Link Slack user to IRC nick
-	slackApp.command("/irc-bridge-user", async ({ payload }) => {
-		const args = payload.text.trim().split(/\s+/);
-		const ircNick = args[0];
+	slackApp.command("/irc-bridge-user", async ({ payload, context }) => {
+		context.respond({
+			response_type: "ephemeral",
+			text: "Enter your IRC nickname",
+			blocks: [
+				{
+					type: "input",
+					block_id: "irc_nick_input",
+					element: {
+						type: "plain_text_input",
+						action_id: "irc_nick",
+						placeholder: {
+							type: "plain_text",
+							text: "myircnick",
+						},
+					},
+					label: {
+						type: "plain_text",
+						text: "IRC Nickname",
+					},
+				},
+				{
+					type: "actions",
+					elements: [
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Link Account",
+							},
+							style: "primary",
+							action_id: "bridge_user_submit",
+							value: payload.user_id,
+						},
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Cancel",
+							},
+							action_id: "cancel",
+						},
+					],
+				},
+			],
+			replace_original: true,
+		});
+	});
 
-		if (!ircNick) {
-			return {
-				text: "Usage: `/irc-bridge-user <irc-nick>`\nExample: `/irc-bridge-user myircnick`",
-			};
+	// Handle bridge user submission
+	slackApp.action("bridge_user_submit", async ({ payload, context }) => {
+		const stateValues = payload.state?.values;
+		const ircNick = stateValues?.irc_nick_input?.irc_nick?.value;
+		// @ts-expect-error
+		const slackUserId = payload.actions?.[0]?.value;
+		if (!context.respond) {
+			return;
 		}
 
-		const slackUserId = payload.user_id;
+		if (!ircNick) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ IRC nickname is required",
+				replace_original: true,
+			});
+			return;
+		}
 
 		try {
 			userMappings.create(slackUserId, ircNick);
 			console.log(`Created user mapping: ${slackUserId} -> ${ircNick}`);
 
-			return {
-				text: `✅ Successfully linked your account to IRC nick: ${ircNick}`,
-			};
+			context.respond({
+				response_type: "ephemeral",
+				text: `✅ Successfully linked your account to IRC nick: *${ircNick}*`,
+				replace_original: true,
+			});
 		} catch (error) {
 			console.error("Error creating user mapping:", error);
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `❌ Failed to link user: ${error}`,
-			};
+				replace_original: true,
+			});
 		}
 	});
 
 	// Unlink Slack user from IRC
-	slackApp.command("/irc-unbridge-user", async ({ payload }) => {
+	slackApp.command("/irc-unbridge-user", async ({ payload, context }) => {
 		const slackUserId = payload.user_id;
+		const mapping = userMappings.getBySlackUser(slackUserId);
+
+		if (!mapping) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ You don't have an IRC nick mapping",
+			});
+			return;
+		}
+
+		context.respond({
+			response_type: "ephemeral",
+			text: "Are you sure you want to remove your link to IRC nick *${mapping.irc_nick}*?",
+			blocks: [
+				{
+					type: "section",
+					text: {
+						type: "mrkdwn",
+						text: `Are you sure you want to remove your link to IRC nick *${mapping.irc_nick}*?`,
+					},
+				},
+				{
+					type: "actions",
+					elements: [
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Remove Link",
+							},
+							style: "danger",
+							action_id: "unbridge_user_confirm",
+							value: slackUserId,
+						},
+						{
+							type: "button",
+							text: {
+								type: "plain_text",
+								text: "Cancel",
+							},
+							action_id: "cancel",
+						},
+					],
+				},
+			],
+			replace_original: true,
+		});
+	});
+
+	// Handle unbridge user confirmation
+	slackApp.action("unbridge_user_confirm", async ({ payload, context }) => {
+		// @ts-expect-error
+		const slackUserId = payload.actions?.[0]?.value;
+		if (!context.respond) {
+			return;
+		}
 
 		try {
 			const mapping = userMappings.getBySlackUser(slackUserId);
 			if (!mapping) {
-				return {
+				context.respond({
+					response_type: "ephemeral",
 					text: "❌ You don't have an IRC nick mapping",
-				};
+					replace_original: true,
+				});
+				return;
 			}
 
 			userMappings.delete(slackUserId);
+			console.log(
+				`Removed user mapping: ${slackUserId} -> ${mapping.irc_nick}`,
+			);
 
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `✅ Removed link to IRC nick: ${mapping.irc_nick}`,
-			};
+				replace_original: true,
+			});
 		} catch (error) {
 			console.error("Error removing user mapping:", error);
-			return {
+			context.respond({
+				response_type: "ephemeral",
 				text: `❌ Failed to remove link: ${error}`,
-			};
+				replace_original: true,
+			});
 		}
 	});
 
+	// Handle cancel button
+	slackApp.action("cancel", async ({ context }) => {
+		if (!context.respond) return;
+
+		context.respond({
+			response_type: "ephemeral",
+			delete_original: true,
+		});
+	});
+
 	// List channel mappings
-	slackApp.command("/irc-bridge-list", async ({ payload }) => {
+	slackApp.command("/irc-bridge-list", async ({ payload, context }) => {
 		const channelMaps = channelMappings.getAll();
 		const userMaps = userMappings.getAll();
 
-		let text = "*Channel Bridges:*\n";
+		const blocks: AnyMessageBlock[] = [
+			{
+				type: "header",
+				text: {
+					type: "plain_text",
+					text: "IRC Bridge Status",
+				},
+			},
+			{
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: "*Channel Bridges:*",
+				},
+			},
+		];
+
 		if (channelMaps.length === 0) {
-			text += "None\n";
+			blocks.push({
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: "_No channel bridges configured_",
+				},
+			});
 		} else {
 			for (const map of channelMaps) {
-				text += `• <#${map.slack_channel_id}> ↔️ ${map.irc_channel}\n`;
+				blocks.push({
+					type: "section",
+					text: {
+						type: "mrkdwn",
+						text: `• <#${map.slack_channel_id}> ↔️ *${map.irc_channel}*`,
+					},
+				});
 			}
 		}
 
-		text += "\n*User Mappings:*\n";
+		blocks.push(
+			{
+				type: "divider",
+			},
+			{
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: "*User Mappings:*",
+				},
+			},
+		);
+
 		if (userMaps.length === 0) {
-			text += "None\n";
+			blocks.push({
+				type: "section",
+				text: {
+					type: "mrkdwn",
+					text: "_No user mappings configured_",
+				},
+			});
 		} else {
 			for (const map of userMaps) {
-				text += `• <@${map.slack_user_id}> ↔️ ${map.irc_nick}\n`;
+				blocks.push({
+					type: "section",
+					text: {
+						type: "mrkdwn",
+						text: `• <@${map.slack_user_id}> ↔️ *${map.irc_nick}*`,
+					},
+				});
 			}
 		}
 
-		return {
-			text,
-		};
+		context.respond({
+			response_type: "ephemeral",
+			text: "IRC mapping list",
+			blocks,
+			replace_original: true,
+		});
 	});
 }
