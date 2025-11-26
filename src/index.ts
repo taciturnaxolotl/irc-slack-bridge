@@ -22,7 +22,7 @@ function getAvatarForNick(nick: string): string {
 		hash = (hash << 5) - hash + nick.charCodeAt(i);
 		hash = hash & hash; // Convert to 32bit integer
 	}
-	return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
+	return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length] as string;
 }
 
 const missingEnvVars = [];

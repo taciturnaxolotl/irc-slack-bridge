@@ -1,3 +1,28 @@
+interface SlackChannel {
+	id: string;
+	created: number;
+	creator: string;
+	name: string;
+	is_channel: boolean;
+	is_private: boolean;
+	is_archived: boolean;
+	[key: string]: unknown;
+}
+
+interface ConversationsInfoResponse {
+	ok: boolean;
+	channel?: SlackChannel;
+	error?: string;
+}
+
+interface RoleAssignmentsResponse {
+	ok: boolean;
+	role_assignments?: Array<{
+		users: string[];
+	}>;
+	error?: string;
+}
+
 /**
  * Check if a user has permission to manage a Slack channel
  * Returns true if the user is:
@@ -17,17 +42,19 @@ export async function canManageChannel(
 
 	try {
 		// Check if user is channel creator
-		const channelInfo = await fetch(
+		const formdata = new FormData();
+		formdata.append("channel", channelId);
+
+		const channelInfo: ConversationsInfoResponse = (await fetch(
 			"https://slack.com/api/conversations.info",
 			{
 				method: "POST",
 				headers: {
-					"Content-Type": "application/json",
 					Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
 				},
-				body: JSON.stringify({ channel: channelId }),
+				body: formdata,
 			},
-		).then((res) => res.json());
+		).then((res) => res.json())) as ConversationsInfoResponse;
 
 		if (channelInfo.ok && channelInfo.channel?.creator === userId) {
 			return true;
@@ -54,7 +81,8 @@ export async function canManageChannel(
 				},
 			);
 
-			const json = await response.json();
+			const json: RoleAssignmentsResponse =
+				(await response.json()) as RoleAssignmentsResponse;
 
 			if (json.ok) {
 				const managers = json.role_assignments?.[0]?.users || [];

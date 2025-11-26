@@ -1,6 +1,6 @@
-import type { AnyMessageBlock, Block, BlockElement } from "slack-edge";
+import type { AnyMessageBlock } from "slack-edge";
 import { channelMappings, userMappings } from "./db";
-import { slackApp, ircClient } from "./index";
+import { ircClient, slackApp } from "./index";
 import { canManageChannel } from "./permissions";
 
 export function registerCommands() {
