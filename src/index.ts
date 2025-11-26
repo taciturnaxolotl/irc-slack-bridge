@@ -6,6 +6,25 @@ import { channelMappings, userMappings } from "./db";
 import { parseIRCFormatting, parseSlackMarkdown } from "./parser";
 import type { CachetUser } from "./types";
 
+// Default profile pictures for unmapped IRC users
+const DEFAULT_AVATARS = [
+	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/4183627c4d26c56c915e104a8a7374f43acd1733_pfp__1_.png",
+	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/389b1e6bd4248a7e5dd88e14c1adb8eb01267080_pfp__2_.png",
+	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/03011a5e59548191de058f33ccd1d1cb1d64f2a0_pfp__3_.png",
+	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/f9c57b88fbd4633114c1864bcc2968db555dbd2a_pfp__4_.png",
+	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/e61a8cabee5a749588125242747b65122fb94205_pfp.png",
+];
+
+// Hash function for stable avatar selection
+function getAvatarForNick(nick: string): string {
+	let hash = 0;
+	for (let i = 0; i < nick.length; i++) {
+		hash = ((hash << 5) - hash) + nick.charCodeAt(i);
+		hash = hash & hash; // Convert to 32bit integer
+	}
+	return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
+}
+
 const missingEnvVars = [];
 if (!process.env.SLACK_BOT_TOKEN) missingEnvVars.push("SLACK_BOT_TOKEN");
 if (!process.env.SLACK_SIGNING_SECRET)
@@ -96,14 +115,13 @@ ircClient.addListener(
 		const userMapping = userMappings.getByIrcNick(nick);
 
 		const displayName = `${nick} <irc>`;
-		let iconUrl: string | undefined;
+		let iconUrl: string;
 
 		if (userMapping) {
-			try {
-				iconUrl = `https://cachet.dunkirk.sh/users/${userMapping.slack_user_id}/r`;
-			} catch (error) {
-				console.error("Error fetching user info:", error);
-			}
+			iconUrl = `https://cachet.dunkirk.sh/users/${userMapping.slack_user_id}/r`;
+		} else {
+			// Use stable random avatar for unmapped users
+			iconUrl = getAvatarForNick(nick);
 		}
 
 		try {
