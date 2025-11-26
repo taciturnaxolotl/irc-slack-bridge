@@ -6,19 +6,44 @@ features:
   bot_user:
     display_name: IRC Bridge
     always_online: true
+  slash_commands:
+    - command: /irc-bridge-channel
+      url: https://casual-renewing-reptile.ngrok-free.app/slack
+      description: Bridge this Slack channel to an IRC channel
+      usage_hint: "#irc-channel"
+      should_escape: true
+    - command: /irc-unbridge-channel
+      url: https://casual-renewing-reptile.ngrok-free.app/slack
+      description: Remove bridge from this Slack channel
+      should_escape: true
+    - command: /irc-bridge-user
+      url: https://casual-renewing-reptile.ngrok-free.app/slack
+      description: Link your Slack account to an IRC nickname
+      usage_hint: "irc-nick"
+      should_escape: true
+    - command: /irc-unbridge-user
+      url: https://casual-renewing-reptile.ngrok-free.app/slack
+      description: Remove your IRC nickname link
+      should_escape: true
+    - command: /irc-bridge-list
+      url: https://casual-renewing-reptile.ngrok-free.app/slack
+      description: List all channel and user bridges
+      should_escape: true
 oauth_config:
   scopes:
     bot:
       - channels:history
       - channels:read
-      - channels:write
       - channels:manage
+      - channels:join
       - chat:write
+      - chat:write.public
       - chat:write.customize
+      - commands
       - groups:read
       - groups:write
       - mpim:write
-      - im:write
+      - im:read
       - users:read
 settings:
   event_subscriptions:
