@@ -91,7 +91,7 @@ let isAuthenticated = false;
 // Join all mapped IRC channels on connect
 ircClient.addListener("registered", async () => {
 	console.log("Connected to IRC server");
-	
+
 	// Authenticate with NickServ if password is provided
 	if (process.env.NICKSERV_PASSWORD && !nickServAuthAttempted) {
 		nickServAuthAttempted = true;
@@ -114,36 +114,51 @@ ircClient.addListener("join", (channel: string, nick: string) => {
 });
 
 // Handle NickServ notices
-ircClient.addListener("notice", async (nick: string, to: string, text: string) => {
-	if (nick !== "NickServ") return;
-	
-	console.log(`NickServ: ${text}`);
-	
-	// Check for successful authentication
-	if (text.includes("You are now identified") || text.includes("Password accepted")) {
-		console.log("✓ Successfully authenticated with NickServ");
-		isAuthenticated = true;
-		
-		// Join channels after successful auth
-		const mappings = channelMappings.getAll();
-		for (const mapping of mappings) {
-			ircClient.join(mapping.irc_channel);
+ircClient.addListener(
+	"notice",
+	async (nick: string, to: string, text: string) => {
+		if (nick !== "NickServ") return;
+
+		console.log(`NickServ: ${text}`);
+
+		// Check for successful authentication
+		if (
+			text.includes("You are now identified") ||
+			text.includes("Password accepted")
+		) {
+			console.log("✓ Successfully authenticated with NickServ");
+			isAuthenticated = true;
+
+			// Join channels after successful auth
+			const mappings = channelMappings.getAll();
+			for (const mapping of mappings) {
+				ircClient.join(mapping.irc_channel);
+			}
 		}
-	}
-	// Check if nick is not registered
-	else if (text.includes("isn't registered") || text.includes("not registered")) {
-		console.log("Nick not registered, registering with NickServ...");
-		if (process.env.NICKSERV_PASSWORD && process.env.NICKSERV_EMAIL) {
-			ircClient.say("NickServ", `REGISTER ${process.env.NICKSERV_PASSWORD} ${process.env.NICKSERV_EMAIL}`);
-		} else {
-			console.error("Cannot register: NICKSERV_EMAIL not configured");
+		// Check if nick is not registered
+		else if (
+			text.includes("isn't registered") ||
+			text.includes("not registered")
+		) {
+			console.log("Nick not registered, registering with NickServ...");
+			if (process.env.NICKSERV_PASSWORD && process.env.NICKSERV_EMAIL) {
+				ircClient.say(
+					"NickServ",
+					`REGISTER ${process.env.NICKSERV_PASSWORD} ${process.env.NICKSERV_EMAIL}`,
+				);
+			} else {
+				console.error("Cannot register: NICKSERV_EMAIL not configured");
+			}
 		}
-	}
-	// Check for failed authentication
-	else if (text.includes("Invalid password") || text.includes("Access denied")) {
-		console.error("✗ NickServ authentication failed: Invalid password");
-	}
-});
+		// Check for failed authentication
+		else if (
+			text.includes("Invalid password") ||
+			text.includes("Access denied")
+		) {
+			console.error("✗ NickServ authentication failed: Invalid password");
+		}
+	},
+);
 
 ircClient.addListener(
 	"message",
@@ -222,8 +237,8 @@ ircClient.addListener(
 					username: displayName,
 					icon_url: iconUrl,
 					attachments: attachments,
-					unfurl_links: false,
-					unfurl_media: false,
+					unfurl_links: true,
+					unfurl_media: true,
 				});
 			} else {
 				await slackClient.chat.postMessage({
@@ -232,8 +247,8 @@ ircClient.addListener(
 					text: messageText,
 					username: displayName,
 					icon_url: iconUrl,
-					unfurl_links: false,
-					unfurl_media: false,
+					unfurl_links: true,
+					unfurl_media: true,
 				});
 			}
 			console.log(`IRC → Slack: <${nick}> ${text}`);
@@ -248,85 +263,88 @@ ircClient.addListener("error", (error: string) => {
 });
 
 // Handle IRC /me actions
-ircClient.addListener("action", async (nick: string, to: string, text: string) => {
-	// Ignore messages from our own bot
-	const botNickPattern = new RegExp(`^${process.env.IRC_NICK}\\d*$`);
-	if (botNickPattern.test(nick)) return;
-	if (nick === "****") return;
+ircClient.addListener(
+	"action",
+	async (nick: string, to: string, text: string) => {
+		// Ignore messages from our own bot
+		const botNickPattern = new RegExp(`^${process.env.IRC_NICK}\\d*$`);
+		if (botNickPattern.test(nick)) return;
+		if (nick === "****") return;
 
-	// Find Slack channel mapping for this IRC channel
-	const mapping = channelMappings.getByIrcChannel(to);
-	if (!mapping) return;
+		// Find Slack channel mapping for this IRC channel
+		const mapping = channelMappings.getByIrcChannel(to);
+		if (!mapping) return;
 
-	// Check if this IRC nick is mapped to a Slack user
-	const userMapping = userMappings.getByIrcNick(nick);
+		// Check if this IRC nick is mapped to a Slack user
+		const userMapping = userMappings.getByIrcNick(nick);
 
-	let iconUrl: string;
-	if (userMapping) {
-		iconUrl = `https://cachet.dunkirk.sh/users/${userMapping.slack_user_id}/r`;
-	} else {
-		iconUrl = getAvatarForNick(nick);
-	}
-
-	// Parse IRC formatting and mentions
-	let messageText = parseIRCFormatting(text);
-
-	// Find all @mentions and nick: mentions in the IRC message
-	const atMentionPattern = /@(\w+)/g;
-	const nickMentionPattern = /(\w+):/g;
-
-	const atMentions = Array.from(messageText.matchAll(atMentionPattern));
-	const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
-
-	for (const match of atMentions) {
-		const mentionedNick = match[1] as string;
-		const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-		if (mentionedUserMapping) {
-			messageText = messageText.replace(
-				match[0],
-				`<@${mentionedUserMapping.slack_user_id}>`,
-			);
+		let iconUrl: string;
+		if (userMapping) {
+			iconUrl = `https://cachet.dunkirk.sh/users/${userMapping.slack_user_id}/r`;
+		} else {
+			iconUrl = getAvatarForNick(nick);
 		}
-	}
 
-	for (const match of nickMentions) {
-		const mentionedNick = match[1] as string;
-		const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-		if (mentionedUserMapping) {
-			messageText = messageText.replace(
-				match[0],
-				`<@${mentionedUserMapping.slack_user_id}>:`,
-			);
+		// Parse IRC formatting and mentions
+		let messageText = parseIRCFormatting(text);
+
+		// Find all @mentions and nick: mentions in the IRC message
+		const atMentionPattern = /@(\w+)/g;
+		const nickMentionPattern = /(\w+):/g;
+
+		const atMentions = Array.from(messageText.matchAll(atMentionPattern));
+		const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
+
+		for (const match of atMentions) {
+			const mentionedNick = match[1] as string;
+			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+			if (mentionedUserMapping) {
+				messageText = messageText.replace(
+					match[0],
+					`<@${mentionedUserMapping.slack_user_id}>`,
+				);
+			}
 		}
-	}
 
-	// Format as action message with context block
-	const actionText = `${nick} ${messageText}`;
+		for (const match of nickMentions) {
+			const mentionedNick = match[1] as string;
+			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+			if (mentionedUserMapping) {
+				messageText = messageText.replace(
+					match[0],
+					`<@${mentionedUserMapping.slack_user_id}>:`,
+				);
+			}
+		}
 
-	await slackClient.chat.postMessage({
-		token: process.env.SLACK_BOT_TOKEN,
-		channel: mapping.slack_channel_id,
-		text: actionText,
-		blocks: [
-			{
-				type: "context",
-				elements: [
-					{
-						type: "image",
-						image_url: iconUrl,
-						alt_text: nick,
-					},
-					{
-						type: "mrkdwn",
-						text: actionText,
-					},
-				],
-			},
-		],
-	});
+		// Format as action message with context block
+		const actionText = `${nick} ${messageText}`;
 
-	console.log(`IRC → Slack (action): ${actionText}`);
-});
+		await slackClient.chat.postMessage({
+			token: process.env.SLACK_BOT_TOKEN,
+			channel: mapping.slack_channel_id,
+			text: actionText,
+			blocks: [
+				{
+					type: "context",
+					elements: [
+						{
+							type: "image",
+							image_url: iconUrl,
+							alt_text: nick,
+						},
+						{
+							type: "mrkdwn",
+							text: actionText,
+						},
+					],
+				},
+			],
+		});
+
+		console.log(`IRC → Slack (action): ${actionText}`);
+	},
+);
 
 // Slack event handlers
 slackApp.event("message", async ({ payload, context }) => {
@@ -368,13 +386,16 @@ slackApp.event("message", async ({ payload, context }) => {
 		const mentions = Array.from(messageText.matchAll(mentionRegex));
 
 		for (const match of mentions) {
-			const userId = match[1];
-			const displayName = match[3]; // The name part after |
-			
+			const userId = match[1] as string;
+			const displayName = match[3] as string; // The name part after |
+
 			// Check if user has a mapped IRC nick
 			const mentionedUserMapping = userMappings.getBySlackUser(userId);
 			if (mentionedUserMapping) {
-				messageText = messageText.replace(match[0], `@${mentionedUserMapping.irc_nick}`);
+				messageText = messageText.replace(
+					match[0],
+					`@${mentionedUserMapping.irc_nick}`,
+				);
 			} else if (displayName) {
 				// Use the display name from the mention format <@U123|name>
 				messageText = messageText.replace(match[0], `@${displayName}`);
@@ -384,7 +405,6 @@ slackApp.event("message", async ({ payload, context }) => {
 					const response = await fetch(
 						`https://cachet.dunkirk.sh/users/${userId}`,
 						{
-							// @ts-ignore - Bun specific option
 							tls: { rejectUnauthorized: false },
 						},
 					);
