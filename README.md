@@ -31,17 +31,27 @@ Make a `.env` file with the following:
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
 
+# Slack workspace URL (for admin API calls)
+SLACK_API_URL=https://hackclub.enterprise.slack.com
+
+# Optional: For channel manager permission checks
+SLACK_USER_COOKIE=your-slack-cookie-here
+SLACK_USER_TOKEN=your-user-token-here
+
 # IRC Configuration
 IRC_NICK=slackbridge
 
 # Admin users (comma-separated Slack user IDs)
-ADMINS=U1234567890
+ADMINS=U1234567890,U0987654321
 
 # Hack Club CDN Token (for file uploads)
 CDN_TOKEN=your-cdn-token-here
 
 # Server Configuration (optional)
 PORT=3000
+
+# Note: Channel and user mappings are now stored in the SQLite database (bridge.db)
+# Use the API or database tools to manage mappings
 ```
 
 See `.env.example` for a template.

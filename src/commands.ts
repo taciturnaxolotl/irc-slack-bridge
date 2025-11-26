@@ -1,6 +1,7 @@
 import type { AnyMessageBlock, Block, BlockElement } from "slack-edge";
 import { channelMappings, userMappings } from "./db";
 import { slackApp, ircClient } from "./index";
+import { canManageChannel } from "./permissions";
 
 export function registerCommands() {
 	// Link Slack channel to IRC channel
@@ -59,6 +60,8 @@ export function registerCommands() {
 		const ircChannel = stateValues?.irc_channel_input?.irc_channel?.value;
 		// @ts-expect-error
 		const slackChannelId = payload.actions?.[0]?.value;
+		const userId = payload.user?.id;
+
 		if (!context.respond) {
 			return;
 		}
@@ -67,6 +70,16 @@ export function registerCommands() {
 			context.respond({
 				response_type: "ephemeral",
 				text: "❌ IRC channel must start with #",
+				replace_original: true,
+			});
+			return;
+		}
+
+		// Check if user has permission to manage this channel
+		if (!userId || !(await canManageChannel(userId, slackChannelId))) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ You don't have permission to manage this channel. You must be the channel creator, a channel manager, or an admin.",
 				replace_original: true,
 			});
 			return;
@@ -102,12 +115,22 @@ export function registerCommands() {
 	// Unlink Slack channel from IRC
 	slackApp.command("/irc-unbridge-channel", async ({ payload, context }) => {
 		const slackChannelId = payload.channel_id;
+		const userId = payload.user_id;
 		const mapping = channelMappings.getBySlackChannel(slackChannelId);
 
 		if (!mapping) {
 			context.respond({
 				response_type: "ephemeral",
 				text: "❌ This channel is not bridged to IRC",
+			});
+			return;
+		}
+
+		// Check if user has permission to manage this channel
+		if (!(await canManageChannel(userId, slackChannelId))) {
+			context.respond({
+				response_type: "ephemeral",
+				text: "❌ You don't have permission to manage this channel. You must be the channel creator, a channel manager, or an admin.",
 			});
 			return;
 		}
@@ -147,7 +170,6 @@ export function registerCommands() {
 					],
 				},
 			],
-			replace_original: true,
 		});
 	});
 

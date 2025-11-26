@@ -19,7 +19,7 @@ const DEFAULT_AVATARS = [
 function getAvatarForNick(nick: string): string {
 	let hash = 0;
 	for (let i = 0; i < nick.length; i++) {
-		hash = ((hash << 5) - hash) + nick.charCodeAt(i);
+		hash = (hash << 5) - hash + nick.charCodeAt(i);
 		hash = hash & hash; // Convert to 32bit integer
 	}
 	return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length];
@@ -126,31 +126,38 @@ ircClient.addListener(
 
 		// Parse IRC mentions and convert to Slack mentions
 		let messageText = parseIRCFormatting(text);
-		
+
 		// Extract image URLs from the message
-		const imagePattern = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg)(?:\?[^\s]*)?/gi;
+		const imagePattern =
+			/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg)(?:\?[^\s]*)?/gi;
 		const imageUrls = Array.from(messageText.matchAll(imagePattern));
-		
+
 		// Find all @mentions and nick: mentions in the IRC message
 		const atMentionPattern = /@(\w+)/g;
 		const nickMentionPattern = /(\w+):/g;
-		
+
 		const atMentions = Array.from(messageText.matchAll(atMentionPattern));
 		const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
-		
+
 		for (const match of atMentions) {
 			const mentionedNick = match[1] as string;
 			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
 			if (mentionedUserMapping) {
-				messageText = messageText.replace(match[0], `<@${mentionedUserMapping.slack_user_id}>`);
+				messageText = messageText.replace(
+					match[0],
+					`<@${mentionedUserMapping.slack_user_id}>`,
+				);
 			}
 		}
-		
+
 		for (const match of nickMentions) {
 			const mentionedNick = match[1] as string;
 			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
 			if (mentionedUserMapping) {
-				messageText = messageText.replace(match[0], `<@${mentionedUserMapping.slack_user_id}>:`);
+				messageText = messageText.replace(
+					match[0],
+					`<@${mentionedUserMapping.slack_user_id}>:`,
+				);
 			}
 		}
 
@@ -238,6 +245,10 @@ slackApp.event("message", async ({ payload, context }) => {
 			try {
 				const response = await fetch(
 					`https://cachet.dunkirk.sh/users/${userId}`,
+					{
+						// @ts-ignore - Bun specific option
+						tls: { rejectUnauthorized: false },
+					},
 				);
 				if (response.ok) {
 					const data = (await response.json()) as CachetUser;
@@ -275,7 +286,7 @@ slackApp.event("message", async ({ payload, context }) => {
 
 				if (response.ok) {
 					const data = await response.json();
-					
+
 					// Send each uploaded file URL to IRC
 					for (const file of data.files) {
 						const fileMessage = `<${username}> ${file.deployedUrl}`;
