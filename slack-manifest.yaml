@@ -1,0 +1,24 @@
+display_information:
+  name: IRC Bridge
+  description: Bridges messages between Slack and IRC (irc.hackclub.com)
+  background_color: "#2c2d30"
+features:
+  bot_user:
+    display_name: IRC Bridge
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - channels:history
+      - channels:read
+      - chat:write
+      - chat:write.customize
+      - users:read
+settings:
+  event_subscriptions:
+    request_url: https://casual-renewing-reptile.ngrok-free.app/slack
+    bot_events:
+      - message.channels
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

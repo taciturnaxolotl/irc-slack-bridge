@@ -13,13 +13,46 @@ bun install
 bun dev
 ```
 
+### Slack App Setup
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) and create a new app
+2. Choose "From an app manifest"
+3. Copy the contents of `slack-manifest.yaml` and paste it
+4. Install the app to your workspace
+5. Copy the "Bot User OAuth Token" (starts with `xoxb-`) and "Signing Secret"
+6. Invite the bot to your desired Slack channel: `/invite @IRC Bridge`
+
 ### Environment Setup
 
 Make a `.env` file with the following:
 
 ```bash
-# env vars go here
+# Slack Configuration
+SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+SLACK_SIGNING_SECRET=your-signing-secret-here
+SLACK_CHANNEL=C1234567890  # Optional: for bidirectional bridging
+
+# IRC Configuration
+IRC_NICK=slackbridge
+IRC_CHANNEL=#general
+
+# Admin users (comma-separated Slack user IDs)
+ADMINS=U1234567890
+
+# Server Configuration (optional)
+PORT=3000
 ```
+
+See `.env.example` for a template.
+
+### How it works
+
+The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bidirectionally:
+
+- **IRC → Slack**: Messages from IRC appear in the configured Slack channel
+- **Slack → IRC**: Messages from Slack are sent to the IRC channel (if SLACK_CHANNEL is configured)
+
+The bridge ignores its own messages and bot messages to prevent loops.
 
 If you want to report an issue the main repo is [the tangled repo](https://tangled.org/dunkirk.sh/irc-slack-bridge) and the github is just a mirror.
 
