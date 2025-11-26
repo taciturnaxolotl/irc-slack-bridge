@@ -30,11 +30,9 @@ Make a `.env` file with the following:
 # Slack Configuration
 SLACK_BOT_TOKEN=xoxb-your-bot-token-here
 SLACK_SIGNING_SECRET=your-signing-secret-here
-SLACK_CHANNEL=C1234567890  # Optional: for bidirectional bridging
 
 # IRC Configuration
 IRC_NICK=slackbridge
-IRC_CHANNEL=#general
 
 # Admin users (comma-separated Slack user IDs)
 ADMINS=U1234567890
@@ -45,12 +43,33 @@ PORT=3000
 
 See `.env.example` for a template.
 
+### Managing Channel and User Mappings
+
+Channel and user mappings are stored in a SQLite database (`bridge.db`). You can manage them through:
+
+**Using Bun REPL:**
+```bash
+bun repl
+> import { channelMappings, userMappings } from "./src/db"
+> channelMappings.create("C1234567890", "#general")
+> userMappings.create("U1234567890", "myircnick")
+> channelMappings.getAll()
+```
+
+**Using SQLite directly:**
+```bash
+bun:sqlite bridge.db
+sqlite> SELECT * FROM channel_mappings;
+sqlite> INSERT INTO channel_mappings (slack_channel_id, irc_channel) VALUES ('C1234567890', '#general');
+```
+
 ### How it works
 
-The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bidirectionally:
+The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bidirectionally based on channel mappings:
 
-- **IRC → Slack**: Messages from IRC appear in the configured Slack channel
-- **Slack → IRC**: Messages from Slack are sent to the IRC channel (if SLACK_CHANNEL is configured)
+- **IRC → Slack**: Messages from mapped IRC channels appear in their corresponding Slack channels
+- **Slack → IRC**: Messages from mapped Slack channels are sent to their corresponding IRC channels
+- User mappings allow custom IRC nicknames for specific Slack users
 
 The bridge ignores its own messages and bot messages to prevent loops.
 
