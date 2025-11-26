@@ -40,22 +40,28 @@ export const channelMappings = {
 	},
 
 	getBySlackChannel(slackChannelId: string): ChannelMapping | null {
-		return db.query("SELECT * FROM channel_mappings WHERE slack_channel_id = ?").get(slackChannelId) as ChannelMapping | null;
+		return db
+			.query("SELECT * FROM channel_mappings WHERE slack_channel_id = ?")
+			.get(slackChannelId) as ChannelMapping | null;
 	},
 
 	getByIrcChannel(ircChannel: string): ChannelMapping | null {
-		return db.query("SELECT * FROM channel_mappings WHERE irc_channel = ?").get(ircChannel) as ChannelMapping | null;
+		return db
+			.query("SELECT * FROM channel_mappings WHERE irc_channel = ?")
+			.get(ircChannel) as ChannelMapping | null;
 	},
 
 	create(slackChannelId: string, ircChannel: string): void {
 		db.run(
 			"INSERT OR REPLACE INTO channel_mappings (slack_channel_id, irc_channel) VALUES (?, ?)",
-			[slackChannelId, ircChannel]
+			[slackChannelId, ircChannel],
 		);
 	},
 
 	delete(slackChannelId: string): void {
-		db.run("DELETE FROM channel_mappings WHERE slack_channel_id = ?", [slackChannelId]);
+		db.run("DELETE FROM channel_mappings WHERE slack_channel_id = ?", [
+			slackChannelId,
+		]);
 	},
 };
 
@@ -65,17 +71,21 @@ export const userMappings = {
 	},
 
 	getBySlackUser(slackUserId: string): UserMapping | null {
-		return db.query("SELECT * FROM user_mappings WHERE slack_user_id = ?").get(slackUserId) as UserMapping | null;
+		return db
+			.query("SELECT * FROM user_mappings WHERE slack_user_id = ?")
+			.get(slackUserId) as UserMapping | null;
 	},
 
 	getByIrcNick(ircNick: string): UserMapping | null {
-		return db.query("SELECT * FROM user_mappings WHERE irc_nick = ?").get(ircNick) as UserMapping | null;
+		return db
+			.query("SELECT * FROM user_mappings WHERE irc_nick = ?")
+			.get(ircNick) as UserMapping | null;
 	},
 
 	create(slackUserId: string, ircNick: string): void {
 		db.run(
 			"INSERT OR REPLACE INTO user_mappings (slack_user_id, irc_nick) VALUES (?, ?)",
-			[slackUserId, ircNick]
+			[slackUserId, ircNick],
 		);
 	},
 

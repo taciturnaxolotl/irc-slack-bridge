@@ -86,4 +86,3 @@ export function parseIRCFormatting(text: string): string {
 
 	return parsed;
 }
-
