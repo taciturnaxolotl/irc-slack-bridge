@@ -40,6 +40,7 @@ oauth_config:
       - chat:write.public
       - chat:write.customize
       - commands
+      - files:read
       - groups:read
       - groups:write
       - mpim:write

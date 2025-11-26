@@ -124,16 +124,65 @@ ircClient.addListener(
 			iconUrl = getAvatarForNick(nick);
 		}
 
+		// Parse IRC mentions and convert to Slack mentions
+		let messageText = parseIRCFormatting(text);
+		
+		// Extract image URLs from the message
+		const imagePattern = /https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg)(?:\?[^\s]*)?/gi;
+		const imageUrls = Array.from(messageText.matchAll(imagePattern));
+		
+		// Find all @mentions and nick: mentions in the IRC message
+		const atMentionPattern = /@(\w+)/g;
+		const nickMentionPattern = /(\w+):/g;
+		
+		const atMentions = Array.from(messageText.matchAll(atMentionPattern));
+		const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
+		
+		for (const match of atMentions) {
+			const mentionedNick = match[1] as string;
+			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+			if (mentionedUserMapping) {
+				messageText = messageText.replace(match[0], `<@${mentionedUserMapping.slack_user_id}>`);
+			}
+		}
+		
+		for (const match of nickMentions) {
+			const mentionedNick = match[1] as string;
+			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
+			if (mentionedUserMapping) {
+				messageText = messageText.replace(match[0], `<@${mentionedUserMapping.slack_user_id}>:`);
+			}
+		}
+
 		try {
-			await slackClient.chat.postMessage({
-				token: process.env.SLACK_BOT_TOKEN,
-				channel: mapping.slack_channel_id,
-				text: parseIRCFormatting(text),
-				username: displayName,
-				icon_url: iconUrl,
-				unfurl_links: false,
-				unfurl_media: false,
-			});
+			// If there are image URLs, send them as attachments
+			if (imageUrls.length > 0) {
+				const attachments = imageUrls.map((match) => ({
+					image_url: match[0],
+					fallback: match[0],
+				}));
+
+				await slackClient.chat.postMessage({
+					token: process.env.SLACK_BOT_TOKEN,
+					channel: mapping.slack_channel_id,
+					text: messageText,
+					username: displayName,
+					icon_url: iconUrl,
+					attachments: attachments,
+					unfurl_links: false,
+					unfurl_media: false,
+				});
+			} else {
+				await slackClient.chat.postMessage({
+					token: process.env.SLACK_BOT_TOKEN,
+					channel: mapping.slack_channel_id,
+					text: messageText,
+					username: displayName,
+					icon_url: iconUrl,
+					unfurl_links: false,
+					unfurl_media: false,
+				});
+			}
 			console.log(`IRC → Slack: <${nick}> ${text}`);
 		} catch (error) {
 			console.error("Error posting to Slack:", error);
@@ -146,8 +195,9 @@ ircClient.addListener("error", (error: string) => {
 });
 
 // Slack event handlers
-slackApp.event("message", async ({ payload }) => {
-	if (payload.subtype) return;
+slackApp.event("message", async ({ payload, context }) => {
+	// Ignore bot messages and threaded messages
+	if (payload.subtype && payload.subtype !== "file_share") return;
 	if (payload.bot_id) return;
 	if (payload.user === botUserId) return;
 	if (payload.thread_ts) return;
@@ -205,6 +255,40 @@ slackApp.event("message", async ({ payload }) => {
 
 		ircClient.say(mapping.irc_channel, message);
 		console.log(`Slack → IRC: ${message}`);
+
+		// Handle file uploads
+		if (payload.files && payload.files.length > 0) {
+			try {
+				// Extract private file URLs
+				const fileUrls = payload.files.map((file) => file.url_private);
+
+				// Upload to Hack Club CDN
+				const response = await fetch("https://cdn.hackclub.com/api/v3/new", {
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${process.env.CDN_TOKEN}`,
+						"X-Download-Authorization": `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(fileUrls),
+				});
+
+				if (response.ok) {
+					const data = await response.json();
+					
+					// Send each uploaded file URL to IRC
+					for (const file of data.files) {
+						const fileMessage = `<${username}> ${file.deployedUrl}`;
+						ircClient.say(mapping.irc_channel, fileMessage);
+						console.log(`Slack → IRC (file): ${fileMessage}`);
+					}
+				} else {
+					console.error("Failed to upload files to CDN:", response.statusText);
+				}
+			} catch (error) {
+				console.error("Error uploading files to CDN:", error);
+			}
+		}
 	} catch (error) {
 		console.error("Error handling Slack message:", error);
 	}
