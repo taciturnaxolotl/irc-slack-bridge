@@ -20,6 +20,19 @@ db.run(`
   )
 `);
 
+db.run(`
+  CREATE TABLE IF NOT EXISTS thread_timestamps (
+    thread_ts TEXT PRIMARY KEY,
+    thread_id TEXT NOT NULL UNIQUE,
+    slack_channel_id TEXT NOT NULL,
+    last_message_time INTEGER NOT NULL
+  )
+`);
+
+db.run(`
+  CREATE INDEX IF NOT EXISTS idx_thread_id ON thread_timestamps(thread_id)
+`);
+
 export interface ChannelMapping {
 	id?: number;
 	slack_channel_id: string;
@@ -91,6 +104,40 @@ export const userMappings = {
 
 	delete(slackUserId: string): void {
 		db.run("DELETE FROM user_mappings WHERE slack_user_id = ?", [slackUserId]);
+	},
+};
+
+export interface ThreadInfo {
+	thread_ts: string;
+	thread_id: string;
+	slack_channel_id: string;
+	last_message_time: number;
+}
+
+export const threadTimestamps = {
+	get(threadTs: string): ThreadInfo | null {
+		return db
+			.query("SELECT * FROM thread_timestamps WHERE thread_ts = ?")
+			.get(threadTs) as ThreadInfo | null;
+	},
+
+	getByThreadId(threadId: string): ThreadInfo | null {
+		return db
+			.query("SELECT * FROM thread_timestamps WHERE thread_id = ?")
+			.get(threadId) as ThreadInfo | null;
+	},
+
+	update(threadTs: string, threadId: string, slackChannelId: string, timestamp: number): void {
+		db.run(
+			"INSERT OR REPLACE INTO thread_timestamps (thread_ts, thread_id, slack_channel_id, last_message_time) VALUES (?, ?, ?, ?)",
+			[threadTs, threadId, slackChannelId, timestamp],
+		);
+	},
+
+	cleanup(olderThan: number): void {
+		db.run("DELETE FROM thread_timestamps WHERE last_message_time < ?", [
+			olderThan,
+		]);
 	},
 };
 

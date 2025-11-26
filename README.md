@@ -101,11 +101,26 @@ The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bi
   - IRC mentions (`@nick` or `nick:`) are converted to Slack mentions for mapped users
   - IRC formatting codes are converted to Slack markdown
   - IRC `/me` actions are displayed in a context block with the user's avatar
+  - Thread replies: Use `@xxxxx` (5-char thread ID) to reply to a Slack thread from IRC
 - **Slack → IRC**: Messages from mapped Slack channels are sent to their corresponding IRC channels
   - Slack mentions are converted to mapped IRC nicks, or the display name from `<@U123|name>` format
   - Slack markdown is converted to IRC formatting codes
   - File attachments are uploaded to Hack Club CDN and URLs are shared
+  - Thread messages are prefixed with `@xxxxx` (5-char thread ID) to show they're part of a thread
+  - First reply in a thread includes a quote of the parent message
 - **User mappings** allow custom IRC nicknames for specific Slack users and enable proper mentions both ways
+
+#### Thread Support
+
+The bridge supports Slack threads with a simple IRC-friendly syntax:
+
+- **Slack → IRC**: Thread messages appear with a `@xxxxx` prefix (5-character thread ID)
+  - First reply in a thread includes a quote: `<user> @xxxxx > original message`
+  - Subsequent replies: `<user> @xxxxx message text`
+- **IRC → Slack**: Reply to a thread by including the thread ID in your message
+  - Example: `@abc12 this is my reply`
+  - The bridge removes the `@xxxxx` prefix and sends your message to the correct thread
+  - Thread IDs are unique per thread and persist across restarts
 
 The bridge ignores its own messages and bot messages to prevent loops.
 

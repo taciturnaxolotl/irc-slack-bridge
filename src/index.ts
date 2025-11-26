@@ -10,6 +10,12 @@ import {
 	convertSlackMentionsToIrc,
 } from "./lib/mentions";
 import { parseIRCFormatting, parseSlackMarkdown } from "./lib/parser";
+import {
+	cleanupOldThreads,
+	getThreadByThreadId,
+	isFirstThreadMessage,
+	updateThreadTimestamp,
+} from "./lib/threads";
 
 const missingEnvVars = [];
 if (!process.env.SLACK_BOT_TOKEN) missingEnvVars.push("SLACK_BOT_TOKEN");
@@ -69,6 +75,11 @@ process.on("beforeExit", () => {
 
 // Register slash commands
 registerCommands();
+
+// Periodic cleanup of old thread timestamps (every hour)
+setInterval(() => {
+	cleanupOldThreads();
+}, 60 * 60 * 1000);
 
 // Track NickServ authentication state
 let nickServAuthAttempted = false;
@@ -174,6 +185,21 @@ ircClient.addListener(
 		// Parse IRC mentions and convert to Slack mentions
 		let messageText = parseIRCFormatting(text);
 
+		// Check for @xxxxx mentions to reply to threads
+		const threadMentionPattern = /@([a-z0-9]{5})\b/i;
+		const threadMatch = messageText.match(threadMentionPattern);
+		let threadTs: string | undefined;
+
+		if (threadMatch) {
+			const threadId = threadMatch[1];
+			const threadInfo = getThreadByThreadId(threadId);
+			if (threadInfo && threadInfo.slack_channel_id === mapping.slack_channel_id) {
+				threadTs = threadInfo.thread_ts;
+				// Remove the @xxxxx from the message
+				messageText = messageText.replace(threadMentionPattern, "").trim();
+			}
+		}
+
 		// Extract image URLs from the message
 		const imagePattern =
 			/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg)(?:\?[^\s]*)?/gi;
@@ -198,6 +224,7 @@ ircClient.addListener(
 					attachments: attachments,
 					unfurl_links: false,
 					unfurl_media: false,
+					thread_ts: threadTs,
 				});
 			} else {
 				await slackClient.chat.postMessage({
@@ -208,6 +235,7 @@ ircClient.addListener(
 					icon_url: iconUrl,
 					unfurl_links: true,
 					unfurl_media: true,
+					thread_ts: threadTs,
 				});
 			}
 			console.log(`IRC (${to}) → Slack: <${nick}> ${text}`);
@@ -279,11 +307,10 @@ ircClient.addListener(
 
 // Slack event handlers
 slackApp.event("message", async ({ payload }) => {
-	// Ignore bot messages and threaded messages
+	// Ignore bot messages
 	if (payload.subtype && payload.subtype !== "file_share") return;
 	if (payload.bot_id) return;
 	if (payload.user === botUserId) return;
-	if (payload.thread_ts) return;
 
 	// Find IRC channel mapping for this Slack channel
 	const mapping = channelMappings.getBySlackChannel(payload.channel);
@@ -317,6 +344,48 @@ slackApp.event("message", async ({ payload }) => {
 		// Parse Slack markdown formatting
 		messageText = parseSlackMarkdown(messageText);
 
+		let threadId: string | undefined;
+
+		// Handle thread messages
+		if (payload.thread_ts) {
+			const threadTs = payload.thread_ts;
+			const isFirstReply = isFirstThreadMessage(threadTs);
+			threadId = updateThreadTimestamp(threadTs, payload.channel);
+
+			if (isFirstReply) {
+				// First reply to thread, fetch and quote the parent message
+				try {
+					const parentResult = await slackClient.conversations.history({
+						token: process.env.SLACK_BOT_TOKEN,
+						channel: payload.channel,
+						latest: threadTs,
+						inclusive: true,
+						limit: 1,
+					});
+
+					if (parentResult.messages && parentResult.messages.length > 0) {
+						const parentMessage = parentResult.messages[0];
+						let parentText = await convertSlackMentionsToIrc(
+							parentMessage.text || "",
+						);
+						parentText = parseSlackMarkdown(parentText);
+
+						// Send the quoted parent message with thread ID
+						const quotedMessage = `<${username}> @${threadId} > ${parentText}`;
+						ircClient.say(mapping.irc_channel, quotedMessage);
+						console.log(`Slack → IRC (thread quote): ${quotedMessage}`);
+					}
+				} catch (error) {
+					console.error("Error fetching parent message:", error);
+				}
+			}
+
+			// Add thread ID to message
+			if (messageText.trim()) {
+				messageText = `@${threadId} ${messageText}`;
+			}
+		}
+
 		// Send message only if there's text content
 		if (messageText.trim()) {
 			const message = `<${username}> ${messageText}`;
@@ -331,7 +400,8 @@ slackApp.event("message", async ({ payload }) => {
 				const data = await uploadToCDN(fileUrls);
 
 				for (const file of data.files) {
-					const fileMessage = `<${username}> ${file.deployedUrl}`;
+					const threadPrefix = threadId ? `@${threadId} ` : "";
+					const fileMessage = `<${username}> ${threadPrefix}${file.deployedUrl}`;
 					ircClient.say(mapping.irc_channel, fileMessage);
 					console.log(`Slack → IRC (file): ${fileMessage}`);
 				}
