@@ -40,6 +40,8 @@ SLACK_USER_TOKEN=your-user-token-here
 
 # IRC Configuration
 IRC_NICK=slackbridge
+NICKSERV_PASSWORD=your-nickserv-password-here
+NICKSERV_EMAIL=your-email@example.com
 
 # Admin users (comma-separated Slack user IDs)
 ADMINS=U1234567890,U0987654321
@@ -90,12 +92,16 @@ sqlite> INSERT INTO channel_mappings (slack_channel_id, irc_channel) VALUES ('C1
 
 The bridge connects to `irc.hackclub.com:6667` (no TLS) and forwards messages bidirectionally based on channel mappings:
 
+- **NickServ Authentication**: If `NICKSERV_PASSWORD` is configured, the bridge authenticates on connect
+  - Waits for NickServ confirmation before joining channels
+  - Auto-registers the nick if not registered (requires `NICKSERV_EMAIL`)
+  - Prevents "No external channel messages" errors by ensuring proper authentication
 - **IRC → Slack**: Messages from mapped IRC channels appear in their corresponding Slack channels
   - Image URLs are automatically displayed as inline attachments
   - IRC mentions (`@nick` or `nick:`) are converted to Slack mentions for mapped users
   - IRC formatting codes are converted to Slack markdown
 - **Slack → IRC**: Messages from mapped Slack channels are sent to their corresponding IRC channels
-  - Slack mentions are converted to `@displayName` format using Cachet
+  - Slack mentions are converted to mapped IRC nicks, or the display name from `<@U123|name>` format
   - Slack markdown is converted to IRC formatting codes
   - File attachments are uploaded to Hack Club CDN and URLs are shared
 - **User mappings** allow custom IRC nicknames for specific Slack users and enable proper mentions both ways

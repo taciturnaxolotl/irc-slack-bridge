@@ -84,18 +84,64 @@ process.on("beforeExit", () => {
 // Register slash commands
 registerCommands();
 
+// Track NickServ authentication state
+let nickServAuthAttempted = false;
+let isAuthenticated = false;
+
 // Join all mapped IRC channels on connect
 ircClient.addListener("registered", async () => {
 	console.log("Connected to IRC server");
-	const mappings = channelMappings.getAll();
-	for (const mapping of mappings) {
-		ircClient.join(mapping.irc_channel);
+	
+	// Authenticate with NickServ if password is provided
+	if (process.env.NICKSERV_PASSWORD && !nickServAuthAttempted) {
+		nickServAuthAttempted = true;
+		console.log("Authenticating with NickServ...");
+		ircClient.say("NickServ", `IDENTIFY ${process.env.NICKSERV_PASSWORD}`);
+		// Don't join channels yet - wait for NickServ response
+	} else if (!process.env.NICKSERV_PASSWORD) {
+		// No auth needed, join immediately
+		const mappings = channelMappings.getAll();
+		for (const mapping of mappings) {
+			ircClient.join(mapping.irc_channel);
+		}
 	}
 });
 
 ircClient.addListener("join", (channel: string, nick: string) => {
 	if (nick === process.env.IRC_NICK) {
 		console.log(`Joined IRC channel: ${channel}`);
+	}
+});
+
+// Handle NickServ notices
+ircClient.addListener("notice", async (nick: string, to: string, text: string) => {
+	if (nick !== "NickServ") return;
+	
+	console.log(`NickServ: ${text}`);
+	
+	// Check for successful authentication
+	if (text.includes("You are now identified") || text.includes("Password accepted")) {
+		console.log("✓ Successfully authenticated with NickServ");
+		isAuthenticated = true;
+		
+		// Join channels after successful auth
+		const mappings = channelMappings.getAll();
+		for (const mapping of mappings) {
+			ircClient.join(mapping.irc_channel);
+		}
+	}
+	// Check if nick is not registered
+	else if (text.includes("isn't registered") || text.includes("not registered")) {
+		console.log("Nick not registered, registering with NickServ...");
+		if (process.env.NICKSERV_PASSWORD && process.env.NICKSERV_EMAIL) {
+			ircClient.say("NickServ", `REGISTER ${process.env.NICKSERV_PASSWORD} ${process.env.NICKSERV_EMAIL}`);
+		} else {
+			console.error("Cannot register: NICKSERV_EMAIL not configured");
+		}
+	}
+	// Check for failed authentication
+	else if (text.includes("Invalid password") || text.includes("Access denied")) {
+		console.error("✗ NickServ authentication failed: Invalid password");
 	}
 });
 
