@@ -235,27 +235,39 @@ slackApp.event("message", async ({ payload, context }) => {
 			userInfo.user?.name ||
 			"Unknown";
 
-		// Parse Slack mentions and replace with display names
+		// Parse Slack mentions and replace with IRC nicks or display names
 		let messageText = payload.text;
-		const mentionRegex = /<@(U[A-Z0-9]+)>/g;
+		const mentionRegex = /<@(U[A-Z0-9]+)(\|([^>]+))?>/g;
 		const mentions = Array.from(messageText.matchAll(mentionRegex));
 
 		for (const match of mentions) {
 			const userId = match[1];
-			try {
-				const response = await fetch(
-					`https://cachet.dunkirk.sh/users/${userId}`,
-					{
-						// @ts-ignore - Bun specific option
-						tls: { rejectUnauthorized: false },
-					},
-				);
-				if (response.ok) {
-					const data = (await response.json()) as CachetUser;
-					messageText = messageText.replace(match[0], `@${data.displayName}`);
+			const displayName = match[3]; // The name part after |
+			
+			// Check if user has a mapped IRC nick
+			const mentionedUserMapping = userMappings.getBySlackUser(userId);
+			if (mentionedUserMapping) {
+				messageText = messageText.replace(match[0], `@${mentionedUserMapping.irc_nick}`);
+			} else if (displayName) {
+				// Use the display name from the mention format <@U123|name>
+				messageText = messageText.replace(match[0], `@${displayName}`);
+			} else {
+				// Fallback to Cachet lookup
+				try {
+					const response = await fetch(
+						`https://cachet.dunkirk.sh/users/${userId}`,
+						{
+							// @ts-ignore - Bun specific option
+							tls: { rejectUnauthorized: false },
+						},
+					);
+					if (response.ok) {
+						const data = (await response.json()) as CachetUser;
+						messageText = messageText.replace(match[0], `@${data.displayName}`);
+					}
+				} catch (error) {
+					console.error(`Error fetching user ${userId} from cachet:`, error);
 				}
-			} catch (error) {
-				console.error(`Error fetching user ${userId} from cachet:`, error);
 			}
 		}
 
