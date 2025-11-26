@@ -2,29 +2,14 @@ import * as irc from "irc";
 import { SlackApp } from "slack-edge";
 import { version } from "../package.json";
 import { registerCommands } from "./commands";
-import { channelMappings, userMappings } from "./db";
+import { channelMappings, userMappings } from "./lib/db";
+import { getAvatarForNick } from "./lib/avatars";
 import { uploadToCDN } from "./lib/cdn";
-import { parseIRCFormatting, parseSlackMarkdown } from "./parser";
-import type { CachetUser } from "./types";
-
-// Default profile pictures for unmapped IRC users
-const DEFAULT_AVATARS = [
-	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/4183627c4d26c56c915e104a8a7374f43acd1733_pfp__1_.png",
-	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/389b1e6bd4248a7e5dd88e14c1adb8eb01267080_pfp__2_.png",
-	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/03011a5e59548191de058f33ccd1d1cb1d64f2a0_pfp__3_.png",
-	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/f9c57b88fbd4633114c1864bcc2968db555dbd2a_pfp__4_.png",
-	"https://hc-cdn.hel1.your-objectstorage.com/s/v3/e61a8cabee5a749588125242747b65122fb94205_pfp.png",
-];
-
-// Hash function for stable avatar selection
-function getAvatarForNick(nick: string): string {
-	let hash = 0;
-	for (let i = 0; i < nick.length; i++) {
-		hash = (hash << 5) - hash + nick.charCodeAt(i);
-		hash = hash & hash; // Convert to 32bit integer
-	}
-	return DEFAULT_AVATARS[Math.abs(hash) % DEFAULT_AVATARS.length] as string;
-}
+import {
+	convertIrcMentionsToSlack,
+	convertSlackMentionsToIrc,
+} from "./lib/mentions";
+import { parseIRCFormatting, parseSlackMarkdown } from "./lib/parser";
 
 const missingEnvVars = [];
 if (!process.env.SLACK_BOT_TOKEN) missingEnvVars.push("SLACK_BOT_TOKEN");
@@ -194,34 +179,7 @@ ircClient.addListener(
 			/https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp|svg)(?:\?[^\s]*)?/gi;
 		const imageUrls = Array.from(messageText.matchAll(imagePattern));
 
-		// Find all @mentions and nick: mentions in the IRC message
-		const atMentionPattern = /@(\w+)/g;
-		const nickMentionPattern = /(\w+):/g;
-
-		const atMentions = Array.from(messageText.matchAll(atMentionPattern));
-		const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
-
-		for (const match of atMentions) {
-			const mentionedNick = match[1] as string;
-			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-			if (mentionedUserMapping) {
-				messageText = messageText.replace(
-					match[0],
-					`<@${mentionedUserMapping.slack_user_id}>`,
-				);
-			}
-		}
-
-		for (const match of nickMentions) {
-			const mentionedNick = match[1] as string;
-			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-			if (mentionedUserMapping) {
-				messageText = messageText.replace(
-					match[0],
-					`<@${mentionedUserMapping.slack_user_id}>:`,
-				);
-			}
-		}
+		messageText = convertIrcMentionsToSlack(messageText);
 
 		try {
 			// If there are image URLs, send them as attachments
@@ -288,35 +246,7 @@ ircClient.addListener(
 
 		// Parse IRC formatting and mentions
 		let messageText = parseIRCFormatting(text);
-
-		// Find all @mentions and nick: mentions in the IRC message
-		const atMentionPattern = /@(\w+)/g;
-		const nickMentionPattern = /(\w+):/g;
-
-		const atMentions = Array.from(messageText.matchAll(atMentionPattern));
-		const nickMentions = Array.from(messageText.matchAll(nickMentionPattern));
-
-		for (const match of atMentions) {
-			const mentionedNick = match[1] as string;
-			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-			if (mentionedUserMapping) {
-				messageText = messageText.replace(
-					match[0],
-					`<@${mentionedUserMapping.slack_user_id}>`,
-				);
-			}
-		}
-
-		for (const match of nickMentions) {
-			const mentionedNick = match[1] as string;
-			const mentionedUserMapping = userMappings.getByIrcNick(mentionedNick);
-			if (mentionedUserMapping) {
-				messageText = messageText.replace(
-					match[0],
-					`<@${mentionedUserMapping.slack_user_id}>:`,
-				);
-			}
-		}
+		messageText = convertIrcMentionsToSlack(messageText);
 
 		// Format as action message with context block
 		const actionText = `${nick} ${messageText}`;
@@ -382,42 +312,7 @@ slackApp.event("message", async ({ payload }) => {
 			"Unknown";
 
 		// Parse Slack mentions and replace with IRC nicks or display names
-		let messageText = payload.text;
-		const mentionRegex = /<@(U[A-Z0-9]+)(\|([^>]+))?>/g;
-		const mentions = Array.from(messageText.matchAll(mentionRegex));
-
-		for (const match of mentions) {
-			const userId = match[1] as string;
-			const displayName = match[3] as string; // The name part after |
-
-			// Check if user has a mapped IRC nick
-			const mentionedUserMapping = userMappings.getBySlackUser(userId);
-			if (mentionedUserMapping) {
-				messageText = messageText.replace(
-					match[0],
-					`@${mentionedUserMapping.irc_nick}`,
-				);
-			} else if (displayName) {
-				// Use the display name from the mention format <@U123|name>
-				messageText = messageText.replace(match[0], `@${displayName}`);
-			} else {
-				// Fallback to Cachet lookup
-				try {
-					const response = await fetch(
-						`https://cachet.dunkirk.sh/users/${userId}`,
-						{
-							tls: { rejectUnauthorized: false },
-						},
-					);
-					if (response.ok) {
-						const data = (await response.json()) as CachetUser;
-						messageText = messageText.replace(match[0], `@${data.displayName}`);
-					}
-				} catch (error) {
-					console.error(`Error fetching user ${userId} from cachet:`, error);
-				}
-			}
-		}
+		let messageText = await convertSlackMentionsToIrc(payload.text);
 
 		// Parse Slack markdown formatting
 		messageText = parseSlackMarkdown(messageText);

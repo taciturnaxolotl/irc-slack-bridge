@@ -1,7 +1,7 @@
 import type { AnyMessageBlock } from "slack-edge";
-import { channelMappings, userMappings } from "./db";
+import { channelMappings, userMappings } from "./lib/db";
 import { ircClient, slackApp } from "./index";
-import { canManageChannel } from "./permissions";
+import { canManageChannel } from "./lib/permissions";
 
 export function registerCommands() {
 	// Link Slack channel to IRC channel
