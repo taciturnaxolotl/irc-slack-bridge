@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun --hot src/index.ts",
+    "dev": "bun src/index.ts",
     "start": "bun src/index.ts",
     "ngrok": "ngrok http 3000 --domain casual-renewing-reptile.ngrok-free.app"
   },
