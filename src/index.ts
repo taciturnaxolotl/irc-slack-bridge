@@ -3,6 +3,7 @@ import { SlackApp } from "slack-edge";
 import { version } from "../package.json";
 import { registerCommands } from "./commands";
 import { channelMappings, userMappings } from "./db";
+import { uploadToCDN } from "./lib/cdn";
 import { parseIRCFormatting, parseSlackMarkdown } from "./parser";
 import type { CachetUser } from "./types";
 
@@ -251,7 +252,7 @@ ircClient.addListener(
 					unfurl_media: true,
 				});
 			}
-			console.log(`IRC → Slack: <${nick}> ${text}`);
+			console.log(`IRC (${to}) → Slack: <${nick}> ${text}`);
 		} catch (error) {
 			console.error("Error posting to Slack:", error);
 		}
@@ -342,12 +343,12 @@ ircClient.addListener(
 			],
 		});
 
-		console.log(`IRC → Slack (action): ${actionText}`);
+		console.log(`IRC (${to}) → Slack (action): ${actionText}`);
 	},
 );
 
 // Slack event handlers
-slackApp.event("message", async ({ payload, context }) => {
+slackApp.event("message", async ({ payload }) => {
 	// Ignore bot messages and threaded messages
 	if (payload.subtype && payload.subtype !== "file_share") return;
 	if (payload.bot_id) return;
@@ -431,31 +432,13 @@ slackApp.event("message", async ({ payload, context }) => {
 		// Handle file uploads
 		if (payload.files && payload.files.length > 0) {
 			try {
-				// Extract private file URLs
 				const fileUrls = payload.files.map((file) => file.url_private);
+				const data = await uploadToCDN(fileUrls);
 
-				// Upload to Hack Club CDN
-				const response = await fetch("https://cdn.hackclub.com/api/v3/new", {
-					method: "POST",
-					headers: {
-						Authorization: `Bearer ${process.env.CDN_TOKEN}`,
-						"X-Download-Authorization": `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(fileUrls),
-				});
-
-				if (response.ok) {
-					const data = await response.json();
-
-					// Send each uploaded file URL to IRC
-					for (const file of data.files) {
-						const fileMessage = `<${username}> ${file.deployedUrl}`;
-						ircClient.say(mapping.irc_channel, fileMessage);
-						console.log(`Slack → IRC (file): ${fileMessage}`);
-					}
-				} else {
-					console.error("Failed to upload files to CDN:", response.statusText);
+				for (const file of data.files) {
+					const fileMessage = `<${username}> ${file.deployedUrl}`;
+					ircClient.say(mapping.irc_channel, fileMessage);
+					console.log(`Slack → IRC (file): ${fileMessage}`);
 				}
 			} catch (error) {
 				console.error("Error uploading files to CDN:", error);

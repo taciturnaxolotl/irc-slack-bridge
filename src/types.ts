@@ -7,3 +7,10 @@ export interface CachetUser {
 	imageUrl: string;
 	expiration: string;
 }
+
+export interface CDNUploadResponse {
+	files: Array<{
+		deployedUrl: string;
+		originalUrl: string;
+	}>;
+}
