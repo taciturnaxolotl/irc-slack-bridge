@@ -237,8 +237,8 @@ ircClient.addListener(
 					username: displayName,
 					icon_url: iconUrl,
 					attachments: attachments,
-					unfurl_links: true,
-					unfurl_media: true,
+					unfurl_links: false,
+					unfurl_media: false,
 				});
 			} else {
 				await slackClient.chat.postMessage({
