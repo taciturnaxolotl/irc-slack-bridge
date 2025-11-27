@@ -6,7 +6,7 @@ db.run(`
   CREATE TABLE IF NOT EXISTS channel_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slack_channel_id TEXT NOT NULL UNIQUE,
-    irc_channel TEXT NOT NULL,
+    irc_channel TEXT NOT NULL UNIQUE,
     created_at INTEGER DEFAULT (strftime('%s', 'now'))
   )
 `);
@@ -15,10 +15,116 @@ db.run(`
   CREATE TABLE IF NOT EXISTS user_mappings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     slack_user_id TEXT NOT NULL UNIQUE,
-    irc_nick TEXT NOT NULL,
+    irc_nick TEXT NOT NULL UNIQUE,
     created_at INTEGER DEFAULT (strftime('%s', 'now'))
   )
 `);
+
+// Migration: Add unique constraints if they don't exist
+// SQLite doesn't support ALTER TABLE to add constraints, so we need to recreate the table
+function migrateSchema() {
+	// Check if irc_channel has unique constraint by examining table schema
+	const channelSchema = db
+		.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='channel_mappings'")
+		.get() as { sql: string } | null;
+	
+	const hasIrcChannelUnique = channelSchema?.sql?.includes("irc_channel TEXT NOT NULL UNIQUE") ?? false;
+
+	if (!hasIrcChannelUnique && channelSchema) {
+		// Check if table has any data with duplicate irc_channel values
+		const duplicates = db.query(
+			"SELECT irc_channel, COUNT(*) as count FROM channel_mappings GROUP BY irc_channel HAVING count > 1",
+		).all();
+
+		if (duplicates.length > 0) {
+			console.warn(
+				"Warning: Found duplicate IRC channel mappings. Keeping only the most recent mapping for each IRC channel.",
+			);
+			for (const dup of duplicates as { irc_channel: string }[]) {
+				// Delete all but the most recent mapping for this IRC channel
+				db.run(
+					`DELETE FROM channel_mappings 
+					 WHERE irc_channel = ? 
+					 AND id NOT IN (
+					   SELECT id FROM channel_mappings 
+					   WHERE irc_channel = ? 
+					   ORDER BY created_at DESC 
+					   LIMIT 1
+					 )`,
+					[dup.irc_channel, dup.irc_channel],
+				);
+			}
+		}
+
+		// Recreate the table with unique constraint
+		db.run(`
+			CREATE TABLE channel_mappings_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				slack_channel_id TEXT NOT NULL UNIQUE,
+				irc_channel TEXT NOT NULL UNIQUE,
+				created_at INTEGER DEFAULT (strftime('%s', 'now'))
+			)
+		`);
+
+		db.run(
+			"INSERT INTO channel_mappings_new SELECT * FROM channel_mappings",
+		);
+		db.run("DROP TABLE channel_mappings");
+		db.run("ALTER TABLE channel_mappings_new RENAME TO channel_mappings");
+		console.log("Migrated channel_mappings table to add unique constraint on irc_channel");
+	}
+
+	// Check if irc_nick has unique constraint by examining table schema
+	const userSchema = db
+		.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='user_mappings'")
+		.get() as { sql: string } | null;
+	
+	const hasIrcNickUnique = userSchema?.sql?.includes("irc_nick TEXT NOT NULL UNIQUE") ?? false;
+
+	if (!hasIrcNickUnique && userSchema) {
+		// Check if table has any data with duplicate irc_nick values
+		const duplicates = db.query(
+			"SELECT irc_nick, COUNT(*) as count FROM user_mappings GROUP BY irc_nick HAVING count > 1",
+		).all();
+
+		if (duplicates.length > 0) {
+			console.warn(
+				"Warning: Found duplicate IRC nick mappings. Keeping only the most recent mapping for each IRC nick.",
+			);
+			for (const dup of duplicates as { irc_nick: string }[]) {
+				// Delete all but the most recent mapping for this IRC nick
+				db.run(
+					`DELETE FROM user_mappings 
+					 WHERE irc_nick = ? 
+					 AND id NOT IN (
+					   SELECT id FROM user_mappings 
+					   WHERE irc_nick = ? 
+					   ORDER BY created_at DESC 
+					   LIMIT 1
+					 )`,
+					[dup.irc_nick, dup.irc_nick],
+				);
+			}
+		}
+
+		// Recreate the table with unique constraint
+		db.run(`
+			CREATE TABLE user_mappings_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				slack_user_id TEXT NOT NULL UNIQUE,
+				irc_nick TEXT NOT NULL UNIQUE,
+				created_at INTEGER DEFAULT (strftime('%s', 'now'))
+			)
+		`);
+
+		db.run("INSERT INTO user_mappings_new SELECT * FROM user_mappings");
+		db.run("DROP TABLE user_mappings");
+		db.run("ALTER TABLE user_mappings_new RENAME TO user_mappings");
+		console.log("Migrated user_mappings table to add unique constraint on irc_nick");
+	}
+}
+
+migrateSchema();
 
 db.run(`
   CREATE TABLE IF NOT EXISTS thread_timestamps (

@@ -86,6 +86,28 @@ export function registerCommands() {
 		}
 
 		try {
+			// Check if IRC channel is already linked
+			const existingIrcMapping = channelMappings.getByIrcChannel(ircChannel);
+			if (existingIrcMapping) {
+				context.respond({
+					response_type: "ephemeral",
+					text: `❌ IRC channel ${ircChannel} is already bridged to <#${existingIrcMapping.slack_channel_id}>`,
+					replace_original: true,
+				});
+				return;
+			}
+
+			// Check if Slack channel is already linked
+			const existingSlackMapping = channelMappings.getBySlackChannel(slackChannelId);
+			if (existingSlackMapping) {
+				context.respond({
+					response_type: "ephemeral",
+					text: `❌ This channel is already bridged to ${existingSlackMapping.irc_channel}`,
+					replace_original: true,
+				});
+				return;
+			}
+
 			channelMappings.create(slackChannelId, ircChannel);
 			ircClient.join(ircChannel);
 
@@ -280,6 +302,28 @@ export function registerCommands() {
 		}
 
 		try {
+			// Check if IRC nick is already linked
+			const existingIrcMapping = userMappings.getByIrcNick(ircNick);
+			if (existingIrcMapping) {
+				context.respond({
+					response_type: "ephemeral",
+					text: `❌ IRC nick *${ircNick}* is already linked to <@${existingIrcMapping.slack_user_id}>`,
+					replace_original: true,
+				});
+				return;
+			}
+
+			// Check if Slack user is already linked
+			const existingSlackMapping = userMappings.getBySlackUser(slackUserId);
+			if (existingSlackMapping) {
+				context.respond({
+					response_type: "ephemeral",
+					text: `❌ You are already linked to IRC nick *${existingSlackMapping.irc_nick}*`,
+					replace_original: true,
+				});
+				return;
+			}
+
 			userMappings.create(slackUserId, ircNick);
 			console.log(`Created user mapping: ${slackUserId} -> ${ircNick}`);
 
